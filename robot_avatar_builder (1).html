@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot Avatar Maker — パーツ合成（6種 × 色変更）</title>
+  <style>
+    :root{--bg:#f3f4f6}
+    body{font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:var(--bg); color:#0f172a; margin:0; padding:24px;}
+    .app{max-width:980px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+    .card{background:white;padding:18px;border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,0.08)}
+    h1{margin:0 0 12px 0;font-size:20px}
+    canvas{width:100%;height:auto;border-radius:8px;border:1px solid #e6eef6;background:linear-gradient(180deg,#eef2ff,white)}
+    .controls{display:flex;flex-direction:column;gap:12px}
+    label{font-size:13px;display:flex;flex-direction:column;gap:6px}
+    select,input[type=color]{padding:8px;border-radius:8px;border:1px solid #e2e8f0}
+    .row{display:flex;gap:8px}
+    .btn{background:#0ea5a4;color:white;padding:10px 14px;border-radius:8px;border:none;cursor:pointer}
+    .small{font-size:12px;color:#475569}
+    .footer{margin-top:12px;display:flex;gap:8px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <h1>Robot Avatar Maker — パーツ合成（Face × Body）</h1>
+      <p class="small">各パーツは6通り。色はパーツごとに自由に指定できます。立体的（簡易シェーディング）に生成します。</p>
+
+      <canvas id="avatarCanvas" width="420" height="520"></canvas>
+
+      <div class="footer">
+        <button id="downloadBtn" class="btn">画像を保存</button>
+        <button id="shareBtn" class="btn" style="background:#2563eb">共有</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <label>
+          Face Variant
+          <select id="faceSelect">
+            <option value="1">Face 1 (Round Visor)</option>
+            <option value="2">Face 2 (Square)</option>
+            <option value="3">Face 3 (Single Eye)</option>
+            <option value="4">Face 4 (Stereo Eyes)</option>
+            <option value="5">Face 5 (Mask/Plate)</option>
+            <option value="6">Face 6 (Antenna Visor)</option>
+          </select>
+        </label>
+
+        <label>
+          Face Color
+          <input type="color" id="faceColor" value="#ff6b6b">
+        </label>
+
+        <label>
+          Body Variant
+          <select id="bodySelect">
+            <option value="1">Body 1 (Boxy)</option>
+            <option value="2">Body 2 (Rounded)</option>
+            <option value="3">Body 3 (Cylinder)</option>
+            <option value="4">Body 4 (Slim)</option>
+            <option value="5">Body 5 (Armor Plates)</option>
+            <option value="6">Body 6 (Backpack/Jet)</option>
+          </select>
+        </label>
+
+        <label>
+          Body Color
+          <input type="color" id="bodyColor" value="#3b82f6">
+        </label>
+
+        <label>
+          Background Color
+          <input type="color" id="bgColor" value="#ffffff">
+        </label>
+
+        <div class="row">
+          <label style="flex:1">
+            Shadow Depth
+            <input id="shadowRange" type="range" min="0" max="20" value="8">
+          </label>
+          <label style="width:110px;text-align:center">
+            <div class="small">Scale</div>
+            <input id="scaleRange" type="range" min="0.6" max="1.2" step="0.01" value="1">
+          </label>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Canvas and controls
+    const canvas = document.getElementById('avatarCanvas');
+    const ctx = canvas.getContext('2d');
+    const faceSelect = document.getElementById('faceSelect');
+    const bodySelect = document.getElementById('bodySelect');
+    const faceColorInput = document.getElementById('faceColor');
+    const bodyColorInput = document.getElementById('bodyColor');
+    const bgColorInput = document.getElementById('bgColor');
+    const shadowRange = document.getElementById('shadowRange');
+    const scaleRange = document.getElementById('scaleRange');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const shareBtn = document.getElementById('shareBtn');
+
+    // Utility: create SVG for each variant (face/body). We use gradients for simple 3D feel.
+    function faceSVG(variant, color){
+      const g = (inner) => `
+        <defs>
+          <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${shade(color, 0.08)}" />
+            <stop offset="100%" stop-color="${shade(color, -0.12)}" />
+          </linearGradient>
+          <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="0.8" />
+          </filter>
+        </defs>
+        ${inner}
+      `;
+
+      if(variant=="1"){
+        // Round visor
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+            ${g(`<rect x='80' y='20' rx='40' ry='40' width='240' height='120' fill='url(#g1)' stroke='${shade(color,-0.25)}' stroke-width='4'/>`)}
+            <ellipse cx='200' cy='85' rx='85' ry='35' fill='rgba(255,255,255,0.17)' />
+            <rect x='150' y='70' width='100' height='14' rx='8' fill='rgba(0,0,0,0.18)' />
+          </svg>`;
+      }
+      if(variant=="2"){
+        // Square
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+            ${g(`<rect x='100' y='10' rx='18' ry='18' width='200' height='160' fill='url(#g1)' stroke='${shade(color,-0.2)}' stroke-width='4'/>`)}
+            <g fill='rgba(0,0,0,0.18)'><circle cx='160' cy='80' r='10'/><circle cx='240' cy='80' r='10'/></g>
+          </svg>`;
+      }
+      if(variant=="3"){
+        // Single eye
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+            ${g(`<ellipse cx='200' cy='80' rx='120' ry='65' fill='url(#g1)' stroke='${shade(color,-0.2)}' stroke-width='4'/>`)}
+            <circle cx='200' cy='80' r='30' fill='black'/>
+            <circle cx='190' cy='72' r='8' fill='white' />
+          </svg>`;
+      }
+      if(variant=="4"){
+        // Stereo eyes with thin face plate
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+            ${g(`<rect x='70' y='30' rx='34' ry='34' width='260' height='140' fill='url(#g1)' stroke='${shade(color,-0.22)}' stroke-width='4'/>`)}
+            <rect x='120' y='70' width='60' height='28' rx='10' fill='black' />
+            <rect x='220' y='70' width='60' height='28' rx='10' fill='black' />
+            <circle cx='150' cy='84' r='6' fill='white' />
+            <circle cx='250' cy='84' r='6' fill='white' />
+          </svg>`;
+      }
+      if(variant=="5"){
+        // Mask plate
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+            ${g(`<path d='M80,40 C120,10 280,10 320,40 L320,140 C280,170 120,170 80,140 Z' fill='url(#g1)' stroke='${shade(color,-0.2)}' stroke-width='4'/>`)}
+            <rect x='170' y='80' width='60' height='20' rx='8' fill='rgba(0,0,0,0.18)' />
+          </svg>`;
+      }
+      // 6: Antenna visor
+      return `<?xml version='1.0' encoding='utf-8'?>
+        <svg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'>
+          ${g(`<rect x='90' y='30' rx='30' ry='30' width='220' height='130' fill='url(#g1)' stroke='${shade(color,-0.22)}' stroke-width='4'/>`)}
+          <line x1='200' y1='10' x2='200' y2='40' stroke='${shade(color,-0.5)}' stroke-width='4' stroke-linecap='round' />
+          <circle cx='200' cy='10' r='6' fill='${shade(color,-0.6)}' />
+        </svg>`;
+    }
+
+    function bodySVG(variant, color){
+      const g = (inner) => `
+        <defs>
+          <linearGradient id="b1" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${shade(color,0.08)}" />
+            <stop offset="100%" stop-color="${shade(color,-0.12)}" />
+          </linearGradient>
+        </defs>
+        ${inner}
+      `;
+
+      if(variant=="1"){
+        // boxy
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+            ${g(`<rect x='90' y='30' rx='18' ry='18' width='240' height='220' fill='url(#b1)' stroke='${shade(color,-0.2)}' stroke-width='5'/>`)}
+            <rect x='140' y='210' width='140' height='20' rx='6' fill='rgba(0,0,0,0.12)' />
+          </svg>`;
+      }
+      if(variant=="2"){
+        // rounded
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+            ${g(`<rect x='100' y='20' rx='60' ry='60' width='220' height='240' fill='url(#b1)' stroke='${shade(color,-0.18)}' stroke-width='4'/>`)}
+            <ellipse cx='210' cy='250' rx='80' ry='12' fill='rgba(0,0,0,0.08)' />
+          </svg>`;
+      }
+      if(variant=="3"){
+        // cylinder
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+            ${g(`<ellipse cx='210' cy='40' rx='100' ry='28' fill='${shade(color,0.06)}' /><rect x='110' y='40' width='200' height='220' fill='url(#b1)' /><ellipse cx='210' cy='260' rx='100' ry='28' fill='${shade(color,-0.14)}' />`)}
+          </svg>`;
+      }
+      if(variant=="4"){
+        // slim
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+            ${g(`<rect x='160' y='30' rx='20' ry='20' width='100' height='240' fill='url(#b1)' stroke='${shade(color,-0.18)}' stroke-width='3'/>`)}
+            <rect x='150' y='120' width='40' height='80' rx='8' fill='rgba(0,0,0,0.08)' />
+            <rect x='230' y='120' width='40' height='80' rx='8' fill='rgba(0,0,0,0.08)' />
+          </svg>`;
+      }
+      if(variant=="5"){
+        // armor plates
+        return `<?xml version='1.0' encoding='utf-8'?>
+          <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+            ${g(`<rect x='90' y='30' rx='18' ry='18' width='240' height='220' fill='url(#b1)' stroke='${shade(color,-0.2)}' stroke-width='4'/>`)}
+            <path d='M110 60 L310 60 L260 140 L160 140 Z' fill='${shade(color,-0.06)}' opacity='0.9' />
+            <rect x='140' y='170' width='140' height='40' rx='6' fill='${shade(color,-0.1)}' />
+          </svg>`;
+      }
+      // 6 backpack/jet
+      return `<?xml version='1.0' encoding='utf-8'?>
+        <svg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'>
+          ${g(`<rect x='100' y='40' rx='24' ry='24' width='220' height='200' fill='url(#b1)' stroke='${shade(color,-0.18)}' stroke-width='4'/>`)}
+          <rect x='60' y='80' width='40' height='120' rx='8' fill='${shade(color,-0.2)}' />
+          <rect x='320' y='80' width='40' height='120' rx='8' fill='${shade(color,-0.2)}' />
+        </svg>`;
+    }
+
+    // Color shading helper (lighten/darken by factor -1..1)
+    function shade(hex, percent){
+      // hex like #rrggbb
+      const c = hex.replace('#','');
+      const num = parseInt(c,16);
+      let r = (num>>16);
+      let g = (num>>8)&0x00FF;
+      let b = num&0x0000FF;
+      r = Math.round(Math.min(255, Math.max(0, r + (percent*255))));
+      g = Math.round(Math.min(255, Math.max(0, g + (percent*255))));
+      b = Math.round(Math.min(255, Math.max(0, b + (percent*255))));
+      return '#'+( (1<<24) + (r<<16) + (g<<8) + b ).toString(16).slice(1);
+    }
+
+    // Render pipeline: draw background, then body (lower y), then face (upper y), add shadow and subtle 3D lighting
+    async function render(){
+      const faceVar = faceSelect.value;
+      const bodyVar = bodySelect.value;
+      const faceColor = faceColorInput.value;
+      const bodyColor = bodyColorInput.value;
+      const bgColor = bgColorInput.value;
+      const shadow = Number(shadowRange.value);
+      const scale = Number(scaleRange.value);
+
+      // clear
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // background
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      // draw ground shadow
+      const cx = canvas.width/2;
+      const groundY = 420;
+      ctx.save();
+      const grd = ctx.createLinearGradient(0,380,0,520);
+      grd.addColorStop(0,'rgba(0,0,0,0.0)');
+      grd.addColorStop(1,'rgba(0,0,0,0.18)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.ellipse(cx, groundY, 140*scale, 24 + shadow, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+
+      // helper: draw an SVG string onto canvas at offset
+      async function drawSVG(svgString, dx, dy, dw, dh, rotate=0){
+        return new Promise((resolve)=>{
+          const img = new Image();
+          const svg = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+          img.onload = ()=>{
+            ctx.save();
+            ctx.translate(dx + dw/2, dy + dh/2);
+            if(rotate) ctx.rotate(rotate*Math.PI/180);
+            ctx.scale(scale, scale);
+            ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+            ctx.restore();
+            resolve();
+          };
+          img.onerror = ()=>{ console.warn('svg load error'); resolve(); };
+          img.src = svg;
+        });
+      }
+
+      // Draw body lower
+      const bodySVGStr = bodySVG(bodyVar, bodyColor);
+      await drawSVG(bodySVGStr, 10, 160, 400, 300);
+
+      // add highlight overlay for body
+      ctx.save();
+      ctx.globalAlpha = 0.12;
+      const highlight = ctx.createLinearGradient(0,120,0,440);
+      highlight.addColorStop(0,'white');
+      highlight.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle = highlight;
+      ctx.fillRect(40,60,340,320);
+      ctx.restore();
+
+      // Draw face upper
+      const faceSVGStr = faceSVG(faceVar, faceColor);
+      await drawSVG(faceSVGStr, 10, 20, 400, 200);
+
+      // draw a subtle rim light to increase 3D
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.08;
+      ctx.beginPath();
+      ctx.arc(cx - 40, 140, 160, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,1)';
+      ctx.fill();
+      ctx.restore();
+
+      // final small shadow under face
+      ctx.save();
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = 'black';
+      ctx.fillRect(140, 210, 140, 6);
+      ctx.restore();
+    }
+
+    // initial render
+    render();
+
+    // wire controls
+    [faceSelect, bodySelect, faceColorInput, bodyColorInput, bgColorInput, shadowRange, scaleRange].forEach(el=>{
+      el.addEventListener('input', ()=> render());
+      el.addEventListener('change', ()=> render());
+    });
+
+    downloadBtn.addEventListener('click', ()=>{
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'robot_avatar.png';
+      a.click();
+    });
+
+    shareBtn.addEventListener('click', async ()=>{
+      if(navigator.canShare && navigator.canShare()){ // progressive
+        const blob = await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+        const filesArray = [new File([blob], 'robot_avatar.png', {type:'image/png'})];
+        try{
+          await navigator.share({ files: filesArray, title: 'My Robot Avatar', text: 'Generated with Robot Avatar Maker' });
+        }catch(e){ alert('共有がキャンセルされました'); }
+      } else {
+        // fallback: download
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'robot_avatar.png';
+        a.click();
+        alert('共有APIが利用できないため画像をダウンロードしました。SNSで手動でアップロードしてください。');
+      }
+    });
+
+  </script>
+</body>
+</html>
